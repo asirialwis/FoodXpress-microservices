@@ -5,4 +5,3 @@ coverage/
 rmq/
 .dockerignore
 Dockerfile
-.env.example
