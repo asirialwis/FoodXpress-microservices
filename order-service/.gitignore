@@ -1,0 +1,12 @@
+node_modules/
+dist/
+.env
+coverage/
+health/
+orders/
+rmq/
+common/
+.dockerignore
+Dockerfile
+sonar-project.properties
+.env.example
