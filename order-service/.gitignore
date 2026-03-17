@@ -5,7 +5,6 @@ coverage/
 health/
 orders/
 rmq/
-common/
 .dockerignore
 Dockerfile
 sonar-project.properties
