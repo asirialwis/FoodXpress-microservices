@@ -2,10 +2,8 @@ node_modules/
 dist/
 .env
 coverage/
-health/
 orders/
 rmq/
 .dockerignore
 Dockerfile
-sonar-project.properties
 .env.example
