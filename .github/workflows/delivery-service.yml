@@ -23,10 +23,10 @@ env:
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
+    environment: production
     defaults:
       run:
-        working-directory: ../../delivery-service
-    environment: production
+        working-directory: delivery-service
 
     steps:
       - name: Checkout
@@ -37,6 +37,7 @@ jobs:
         with:
           node-version: "20"
           cache: "npm"
+          cache-dependency-path: delivery-service/package-lock.json
 
       - name: Install dependencies
         run: npm ci
@@ -65,7 +66,7 @@ jobs:
       - name: Build and push image to Docker Hub
         id: build-image
         run: |
-          docker build -t $DOCKERHUB_IMAGE:${{ github.sha }} .
+          docker build -t $DOCKERHUB_IMAGE:${{ github.sha }} ./delivery-service
           docker tag $DOCKERHUB_IMAGE:${{ github.sha }} $DOCKERHUB_IMAGE:latest
           docker push $DOCKERHUB_IMAGE:${{ github.sha }}
           docker push $DOCKERHUB_IMAGE:latest
