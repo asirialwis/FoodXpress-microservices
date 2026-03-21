@@ -10,7 +10,7 @@ export class HealthController {
   check() {
     return {
       status: 'ok',
-      service: 'delivery-service-BEFORE-CICD',
+      service: 'delivery-service-AFTER-CICD',
       timestamp: new Date().toISOString(),
     };
   }
