@@ -157,21 +157,24 @@ jobs:
           aws ecs describe-task-definition \
             --task-definition ${{ env.TASK_DEFINITION }} \
             --region ${{ env.AWS_REGION }} \
-            --query 'taskDefinition' > task-definition.json
+            --query 'taskDefinition' > /tmp/task-def-full.json
 
       - name: Update image in task definition
         uses: aws-actions/amazon-ecs-render-task-definition@v1
         with:
-          task-definition: task-definition.json
+          task-definition: /tmp/task-def-full.json
           container-name: ${{ env.SERVICE_NAME }}
           image: ${{ needs.build-and-push-ecr.outputs.image_uri }}
 
+      - name: Clean task definition for registration
+        run: |
+          jq 'del(.taskDefinitionArn, .revision, .status, .requiresAttributes, .compatibilities, .registeredAt, .registeredBy)' task-definition.json > task-definition-clean.json
+
       - name: Register task definition
         run: |
-          TASK_DEF=$(cat task-definition.json)
           aws ecs register-task-definition \
             --region ${{ env.AWS_REGION }} \
-            --cli-input-json "$TASK_DEF"
+            --cli-input-json file://task-definition-clean.json
 
       - name: Update ECS service
         run: |
