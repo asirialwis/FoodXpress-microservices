@@ -157,18 +157,25 @@ jobs:
           aws ecs describe-task-definition \
             --task-definition ${{ env.TASK_DEFINITION }} \
             --region ${{ env.AWS_REGION }} \
-            --query 'taskDefinition' > /tmp/task-def-full.json
+            --query 'taskDefinition' > task-definition.json
 
       - name: Update image in task definition
-        uses: aws-actions/amazon-ecs-render-task-definition@v1
-        with:
-          task-definition: /tmp/task-def-full.json
-          container-name: ${{ env.SERVICE_NAME }}
-          image: ${{ needs.build-and-push-ecr.outputs.image_uri }}
-
-      - name: Clean task definition for registration
         run: |
-          jq 'del(.taskDefinitionArn, .revision, .status, .requiresAttributes, .compatibilities, .registeredAt, .registeredBy)' task-definition.json > task-definition-clean.json
+          # Update the image in the container definition
+          jq '.containerDefinitions[0].image = "${{ needs.build-and-push-ecr.outputs.image_uri }}"' task-definition.json > task-definition-updated.json
+          
+          # Keep only the fields accepted by register-task-definition (remove metadata)
+          jq '{
+            family: .family,
+            networkMode: .networkMode,
+            requiresCompatibilities: .requiresCompatibilities,
+            cpu: .cpu,
+            memory: .memory,
+            containerDefinitions: .containerDefinitions,
+            executionRoleArn: .executionRoleArn,
+            taskRoleArn: .taskRoleArn,
+            volumes: (if .volumes then .volumes else [] end)
+          } | with_entries(select(.value != null))' task-definition-updated.json > task-definition-clean.json
 
       - name: Register task definition
         run: |
