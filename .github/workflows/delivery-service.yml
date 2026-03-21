@@ -25,7 +25,7 @@ jobs:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: ../delivery-service
+        working-directory: ../../delivery-service
     environment: production
 
     steps:
