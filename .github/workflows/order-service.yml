@@ -1,0 +1,247 @@
+name: Order Service CI/CD
+
+on:
+  push:
+    branches: [main, develop]
+    paths:
+      - 'order-service/**'
+      - '.github/workflows/order-service.yml'
+  pull_request:
+    branches: [main, develop]
+    paths:
+      - 'order-service/**'
+
+env:
+  SERVICE_NAME: order-service
+  AWS_REGION: ap-southeast-1
+  ECR_REPOSITORY: foodxpress/order-service
+  ECS_CLUSTER: foodxpress-cluster
+  ECS_SERVICE: order-service
+  TASK_DEFINITION: order-service
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./order-service
+
+    strategy:
+      matrix:
+        node-version: [20.x]
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: 'npm'
+          cache-dependency-path: './order-service/package-lock.json'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run linting
+        run: npm run lint --if-present
+
+      - name: Run tests
+        run: npm run test -- --passWithNoTests
+
+      - name: Run test coverage
+        run: npm run test:cov -- --passWithNoTests || true
+
+      - name: Build application
+        run: npm run build
+
+      - name: Upload coverage reports
+        uses: codecov/codecov-action@v3
+        with:
+          directory: ./order-service/coverage
+          fail_ci_if_error: false
+
+  security-scan:
+    runs-on: ubuntu-latest
+    needs: test
+    defaults:
+      run:
+        working-directory: ./order-service
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20.x
+          cache: 'npm'
+          cache-dependency-path: './order-service/package-lock.json'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run npm audit
+        run: npm audit --audit-level=high || true
+
+      - name: Run Snyk scan
+        uses: snyk/actions/node@master
+        env:
+          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+        with:
+          args: --severity-threshold=high
+        continue-on-error: true
+
+  build-and-push-ecr:
+    runs-on: ubuntu-latest
+    needs: [test, security-scan]
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop'
+
+    permissions:
+      id-token: write
+      contents: read
+
+    outputs:
+      image_uri: ${{ steps.image.outputs.image_uri }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build and push Docker image
+        run: |
+          REGISTRY=${{ steps.login-ecr.outputs.registry }}
+          docker build -t $REGISTRY/${{ env.ECR_REPOSITORY }}:latest -t $REGISTRY/${{ env.ECR_REPOSITORY }}:${{ github.sha }} ./order-service
+          docker push $REGISTRY/${{ env.ECR_REPOSITORY }}:latest
+          docker push $REGISTRY/${{ env.ECR_REPOSITORY }}:${{ github.sha }}
+
+      - name: Output image URI
+        id: image
+        run: |
+          REGISTRY=${{ steps.login-ecr.outputs.registry }}
+          echo "image_uri=$REGISTRY/${{ env.ECR_REPOSITORY }}:latest" >> $GITHUB_OUTPUT
+
+  deploy-to-ecs:
+    runs-on: ubuntu-latest
+    needs: build-and-push-ecr
+    if: github.ref == 'refs/heads/main'
+
+    permissions:
+      id-token: write
+      contents: read
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Get current task definition
+        run: |
+          aws ecs describe-task-definition \
+            --task-definition ${{ env.TASK_DEFINITION }} \
+            --region ${{ env.AWS_REGION }} \
+            --query 'taskDefinition' > task-definition.json
+
+      - name: Update image in task definition
+        uses: aws-actions/amazon-ecs-render-task-definition@v1
+        with:
+          task-definition: task-definition.json
+          container-name: ${{ env.SERVICE_NAME }}
+          image: ${{ needs.build-and-push-ecr.outputs.image_uri }}
+
+      - name: Register task definition
+        run: |
+          TASK_DEF=$(cat task-definition.json)
+          aws ecs register-task-definition \
+            --region ${{ env.AWS_REGION }} \
+            --cli-input-json "$TASK_DEF"
+
+      - name: Update ECS service
+        run: |
+          aws ecs update-service \
+            --cluster ${{ env.ECS_CLUSTER }} \
+            --service ${{ env.ECS_SERVICE }} \
+            --force-new-deployment \
+            --region ${{ env.AWS_REGION }} \
+            --output json
+
+      - name: Wait for service to stabilize
+        run: |
+          aws ecs wait services-stable \
+            --cluster ${{ env.ECS_CLUSTER }} \
+            --services ${{ env.ECS_SERVICE }} \
+            --region ${{ env.AWS_REGION }}
+
+      - name: Verify deployment
+        run: |
+          RUNNING=$(aws ecs describe-services \
+            --cluster ${{ env.ECS_CLUSTER }} \
+            --services ${{ env.ECS_SERVICE }} \
+            --region ${{ env.AWS_REGION }} \
+            --query 'services[0].runningCount' \
+            --output text)
+          
+          DESIRED=$(aws ecs describe-services \
+            --cluster ${{ env.ECS_CLUSTER }} \
+            --services ${{ env.ECS_SERVICE }} \
+            --region ${{ env.AWS_REGION }} \
+            --query 'services[0].desiredCount' \
+            --output text)
+          
+          echo "Running: $RUNNING / Desired: $DESIRED"
+          
+          if [ "$RUNNING" -eq "$DESIRED" ]; then
+            echo "✅ Deployment successful!"
+            exit 0
+          else
+            echo "❌ Deployment failed: Not all tasks running"
+            exit 1
+          fi
+
+      - name: Deployment Summary
+        if: success()
+        run: |
+          echo "## ✅ Deployment Successful" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- **Service**: ${{ env.SERVICE_NAME }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Cluster**: ${{ env.ECS_CLUSTER }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Image**: ${{ needs.build-and-push-ecr.outputs.image_uri }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Commit**: ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Branch**: ${{ github.ref_name }}" >> $GITHUB_STEP_SUMMARY
+
+      - name: Notify on failure
+        if: failure()
+        run: |
+          echo "## ❌ Deployment Failed" >> $GITHUB_STEP_SUMMARY
+          echo "See logs above for details" >> $GITHUB_STEP_SUMMARY
+
+  notify:
+    runs-on: ubuntu-latest
+    needs: [test, security-scan, build-and-push-ecr, deploy-to-ecs]
+    if: always()
+
+    steps:
+      - name: Job Status Summary
+        run: |
+          echo "## Workflow Summary"
+          echo "- **Test**: ${{ needs.test.result }}"
+          echo "- **Security Scan**: ${{ needs.security-scan.result }}"
+          echo "- **Build & Push ECR**: ${{ needs.build-and-push-ecr.result }}"
+          echo "- **Deploy to ECS**: ${{ needs.deploy-to-ecs.result }}"
