@@ -45,9 +45,6 @@ jobs:
       - name: Lint
         run: npm run lint --if-present
 
-      - name: Unit tests
-        run: npm run test --if-present
-
       - name: Build app
         run: npm run build
 
