@@ -63,7 +63,7 @@ jobs:
       - name: Build and push image to Docker Hub
         id: build-image
         run: |
-          docker build -t $DOCKERHUB_IMAGE:${{ github.sha }} ./delivery-service
+          docker build -t $DOCKERHUB_IMAGE:${{ github.sha }} .
           docker tag $DOCKERHUB_IMAGE:${{ github.sha }} $DOCKERHUB_IMAGE:latest
           docker push $DOCKERHUB_IMAGE:${{ github.sha }}
           docker push $DOCKERHUB_IMAGE:latest
