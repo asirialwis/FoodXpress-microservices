@@ -9,6 +9,10 @@ import { AppModule } from './app.module';
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
 
+  // Trust proxy is required when running behind a proxy like Azure Container Apps
+  // It allows express-rate-limit to read the correct IP addresses
+  app.getHttpAdapter().getInstance().set('trust proxy', 1);
+
   // Connect RabbitMQ microservice (hybrid app)
   const rmqUrl = process.env.RABBITMQ_URL || 'amqp://localhost:5672';
   app.connectMicroservice<MicroserviceOptions>({
