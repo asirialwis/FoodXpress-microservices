@@ -8,7 +8,7 @@ export class HealthController {
   @ApiOperation({ summary: 'Health check endpoint' })
   check() {
     return {
-      status: 'online',
+      status: 'Service is online',
       service: 'restaurant-service',
       timestamp: new Date().toISOString(),
     };
