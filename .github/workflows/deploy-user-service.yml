@@ -1,0 +1,59 @@
+# Build & push user-service to Docker Hub, then deploy to Azure Web App (container)
+# using a publish profile — no Azure Service Principal required.
+#
+# Required GitHub repository secrets:
+#   DOCKERHUB_USERNAME
+#   DOCKERHUB_TOKEN          — Docker Hub → Account Settings → Security → Access Token
+#   AZURE_WEBAPP_PUBLISH_PROFILE — Web App → Overview → Get publish profile (full .PublishSettings XML)
+#
+# Optional: change AZURE_WEBAPP_NAME if your Azure app name differs.
+
+name: Deploy user-service
+
+on:
+  push:
+    branches:
+      - main
+      - master
+      - user-service-dev
+    paths:
+      - 'user-service/**'
+      - '.github/workflows/deploy-user-service.yml'
+  workflow_dispatch:
+
+env:
+  AZURE_WEBAPP_NAME: foodxpress-user-api
+  IMAGE_REPO: foodxpress-user-service
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Build and push image
+        uses: docker/build-push-action@v6
+        with:
+          context: ./user-service
+          file: ./user-service/Dockerfile
+          push: true
+          tags: |
+            docker.io/${{ secrets.DOCKERHUB_USERNAME }}/${{ env.IMAGE_REPO }}:${{ github.sha }}
+            docker.io/${{ secrets.DOCKERHUB_USERNAME }}/${{ env.IMAGE_REPO }}:latest
+
+      - name: Deploy to Azure Web App
+        uses: azure/webapps-deploy@v3
+        with:
+          app-name: ${{ env.AZURE_WEBAPP_NAME }}
+          publish-profile: ${{ secrets.AZURE_WEBAPP_PUBLISH_PROFILE }}
+          images: docker.io/${{ secrets.DOCKERHUB_USERNAME }}/${{ env.IMAGE_REPO }}:${{ github.sha }}
