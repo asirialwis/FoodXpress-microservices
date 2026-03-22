@@ -94,8 +94,6 @@ jobs:
         with:
           args: >
             -Dsonar.projectBaseDir=./order-service
-            -Dsonar.sources=./order-service/src
-            -Dsonar.tests=./order-service/test
             -Dsonar.javascript.lcov.reportPaths=./order-service/coverage/lcov.info
         continue-on-error: true
 
