@@ -4,3 +4,8 @@ dist/
 coverage/
 .dockerignore
 
+*.sh
+*.zip
+*.log
+/aws
+*.csv
