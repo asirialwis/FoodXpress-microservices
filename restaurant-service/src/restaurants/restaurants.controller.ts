@@ -9,6 +9,8 @@ import {
   Query,
   UseGuards,
   Logger,
+  Req,
+  ForbiddenException,
 } from '@nestjs/common';
 import { MessagePattern, Payload } from '@nestjs/microservices';
 import {
@@ -80,7 +82,12 @@ export class RestaurantsController {
   @ApiOperation({ summary: 'Create a new restaurant' })
   @ApiResponse({ status: 201, description: 'Restaurant created successfully' })
   @ApiResponse({ status: 400, description: 'Bad request' })
-  create(@Body() createRestaurantDto: CreateRestaurantDto) {
+  create(@Body() createRestaurantDto: CreateRestaurantDto, @Req() req: any) {
+    const userId = req.user.sub || req.user.id || req.user.userId;
+    if (createRestaurantDto.ownerId && createRestaurantDto.ownerId !== userId) {
+      throw new ForbiddenException('You can only create a restaurant for yourself');
+    }
+    createRestaurantDto.ownerId = userId;
     return this.restaurantsService.create(createRestaurantDto);
   }
 
@@ -113,10 +120,16 @@ export class RestaurantsController {
   @ApiOperation({ summary: 'Update a restaurant' })
   @ApiResponse({ status: 200, description: 'Restaurant updated successfully' })
   @ApiResponse({ status: 404, description: 'Restaurant not found' })
-  update(
+  async update(
     @Param('id') id: string,
     @Body() updateRestaurantDto: UpdateRestaurantDto,
+    @Req() req: any,
   ) {
+    const userId = req.user.sub || req.user.id || req.user.userId;
+    const restaurant = await this.restaurantsService.findById(id);
+    if (restaurant.ownerId !== userId) {
+      throw new ForbiddenException('You can only update your own restaurant');
+    }
     return this.restaurantsService.update(id, updateRestaurantDto);
   }
 
@@ -126,7 +139,12 @@ export class RestaurantsController {
   @ApiOperation({ summary: 'Delete a restaurant' })
   @ApiResponse({ status: 200, description: 'Restaurant deleted successfully' })
   @ApiResponse({ status: 404, description: 'Restaurant not found' })
-  remove(@Param('id') id: string) {
+  async remove(@Param('id') id: string, @Req() req: any) {
+    const userId = req.user.sub || req.user.id || req.user.userId;
+    const restaurant = await this.restaurantsService.findById(id);
+    if (restaurant.ownerId !== userId) {
+      throw new ForbiddenException('You can only delete your own restaurant');
+    }
     return this.restaurantsService.remove(id);
   }
 }
