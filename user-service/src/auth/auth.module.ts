@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { JwtModule } from '@nestjs/jwt';
+import { SignOptions } from 'jsonwebtoken';
 import { PassportModule } from '@nestjs/passport';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { AuthService } from './auth.service';
@@ -17,7 +18,7 @@ import { LocalStrategy } from './strategies/local.strategy';
       useFactory: async (configService: ConfigService) => ({
         secret: configService.get<string>('JWT_SECRET', 'your-jwt-secret-key'),
         signOptions: {
-          expiresIn: configService.get<string>('JWT_EXPIRATION', '3600s'),
+          expiresIn: configService.get<string>('JWT_EXPIRATION', '3600s') as SignOptions['expiresIn'],
         },
       }),
       inject: [ConfigService],
