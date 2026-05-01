@@ -51,7 +51,7 @@ jobs:
             docker.io/${{ secrets.DOCKERHUB_USERNAME_USER }}/${{ env.IMAGE_REPO }}:${{ github.sha }}
             docker.io/${{ secrets.DOCKERHUB_USERNAME_USER }}/${{ env.IMAGE_REPO }}:latest
 
-      - name: Deploy to Azure Web App
+      - name: Deploy Supervisor Container (Azure)
         uses: azure/webapps-deploy@v3
         with:
           app-name: ${{ env.AZURE_WEBAPP_NAME }}
