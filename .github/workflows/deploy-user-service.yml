@@ -5,6 +5,7 @@
 #   DOCKERHUB_USERNAME_USER
 #   DOCKERHUB_TOKEN_USER     — Docker Hub → Account Settings → Security → Access Token
 #   AZURE_WEBAPP_PUBLISH_PROFILE_USER — Web App → Get publish profile (full .PublishSettings XML)
+#   SNYK_TOKEN               — Snyk account → General → Auth token (for dependency scan on push)
 #
 # Optional: change AZURE_WEBAPP_NAME if your Azure app name differs.
 
@@ -33,6 +34,24 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Setup Node (for Snyk)
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: user-service/package-lock.json
+
+      - name: Install dependencies (user-service)
+        working-directory: user-service
+        run: npm ci
+
+      # Scans package.json / lockfile; fails the job if issues exceed threshold
+      - name: Snyk dependency scan (user-service)
+        working-directory: user-service
+        env:
+          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN_USER }}
+        run: npx -y snyk@latest test --severity-threshold=high
 
       - name: Log in to Docker Hub
         uses: docker/login-action@v3
