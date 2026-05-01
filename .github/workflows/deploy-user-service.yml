@@ -5,17 +5,19 @@
 #   DOCKERHUB_USERNAME_USER
 #   DOCKERHUB_TOKEN_USER     — Docker Hub → Account Settings → Security → Access Token
 #   AZURE_WEBAPP_PUBLISH_PROFILE_USER — Web App → Get publish profile (full .PublishSettings XML)
-#   SNYK_TOKEN               — Snyk account → General → Auth token (for dependency scan on push)
+#   SNYK_TOKEN_USER           — GitHub Actions secret holding your Snyk PAT / token
 #
 # Optional: change AZURE_WEBAPP_NAME if your Azure app name differs.
 
 name: Deploy user-service
 
+# user-service-dev: Snyk only. main / master (+ manual run on those branches): full scan + Docker + Azure.
 on:
   push:
     branches:
       - main
       - master
+      - user-service-dev
     paths:
       - 'user-service/**'
       - '.github/workflows/deploy-user-service.yml'
@@ -54,12 +56,14 @@ jobs:
         run: npx -y snyk@latest test --severity-threshold=high
 
       - name: Log in to Docker Hub
+        if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
         uses: docker/login-action@v3
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME_USER }}
           password: ${{ secrets.DOCKERHUB_TOKEN_USER }}
 
       - name: Build and push image
+        if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
         uses: docker/build-push-action@v6
         with:
           context: ./user-service
@@ -70,6 +74,7 @@ jobs:
             docker.io/${{ secrets.DOCKERHUB_USERNAME_USER }}/${{ env.IMAGE_REPO }}:latest
 
       - name: Deploy to Azure Container
+        if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
         uses: azure/webapps-deploy@v3
         with:
           app-name: ${{ env.AZURE_WEBAPP_NAME }}
